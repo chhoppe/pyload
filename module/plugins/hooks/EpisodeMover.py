@@ -173,7 +173,7 @@ class EpisodeMover(Hook):
             else:
                 self.acq_rls_ProcessingLock(extract_path)
                 self.acq_rls_ProcessingLock(dl_path)
-    
+            self.doProcessing("/share/Multimedia/Unsortiert")
     
     # event dispatched on completion of single file   
     def downloadFinished(self, pyfile):
