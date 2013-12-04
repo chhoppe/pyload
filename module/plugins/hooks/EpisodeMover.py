@@ -138,7 +138,14 @@ class EpisodeMover(Hook):
         self.__tvdb_update_lock.release()
         self.logDebug("Lock for population process of tv database released.")
         return True    
-    
+
+    def _addToTVDb(self, path):
+        ldr = PathLoader()
+        tmptvlist = ldr.loadFolders(path)
+        if not (tmptvlist == {}): # only returns empty if target dir either on its own is empty or not existing
+            self.__tvdb.update(tmptvlist)
+
+
     
     def coreReady(self):
         ConfigDumper(self).dump()
