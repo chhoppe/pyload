@@ -27,6 +27,8 @@ from module.common.json_layer import json
 from datetime import datetime as dt
 import traceback
 import inspect
+import pwd
+import grp
 #remote debugging
 # from module.common.pydevsrc import pydevd 
 
@@ -384,6 +386,7 @@ class EpisodeMover(Hook):
                     os.mkdir(episode.dst) #race condition 
                     self.logInfo(u'Conclusive result on show name determination: "%s" recognised as show "%s".' % (episode.src_filename, show_name))
                     self.logInfo(u'Added "%s" to local tv database and created folder "%s".' % (show_name, episode.dst))
+                    self.setPermissions(episode.dst)
                     return True
                 except OSError, ose:
                     if ose.errno == 17:
@@ -504,6 +507,7 @@ class EpisodeMover(Hook):
             os.mkdir(season_path)
             episode.dst = season_path
             self.logInfo(u'Season directory for show "%s" does not exist. Directory "%s" is being created' % (episode.src_filename,season))
+            self.setPermissions(season_path)
             return True
         elif createSeason is False and os.path.exists(season_path) is False:
             self.logDebug(u'Season directory for show "%s" does not exist. Directory "%s" is not being created' % (episode.show_name,season))
@@ -615,23 +619,25 @@ class EpisodeMover(Hook):
         self.__mv_queue.task_done() # announce completion
     
     
-        
-    def setPermissions(self, files): # sorry whoever wrote ExtractArchive but I had to steal this one... ;) (import was not feasible) 
-        for f in files:
-            if not os.path.exists(f): continue
+    def setPermissions(self, f): # sorry whoever wrote ExtractArchive but I had to steal this one... ;) (import was not feasible) 
+        # original function requieres an array of files but only gets one file, result is that f was not a filepath but just a letter
+        if os.path.exists(f):
             try:
                 if self.core.config["permission"]["change_file"]:
                     if os.path.isfile(f):
-                        os.path.chmod(f, int(self.core.config["permission"]["file"], 8))
+                        os.chmod(f, int(self.core.config["permission"]["file"], 8))
+                        self.logDebug(u'Permissions set for file "%s"' % f)
                     elif os.path.isdir(f):
-                        os.path.chmod(f, int(self.core.config["permission"]["folder"], 8))
+                        os.chmod(f, int(self.core.config["permission"]["folder"], 8))
+                        self.logDebug(u'Permissions set for directory "%s"' % f)
 
                 if self.core.config["permission"]["change_dl"] and os.name != "nt":
-                    uid = os.path.getpwnam(self.config["permission"]["user"])[2]
-                    gid = os.path.getgrnam(self.config["permission"]["group"])[2]
-                    os.path.chown(f, uid, gid)
+                    uid = pwd.getpwnam(self.config["permission"]["user"]).pw_uid
+                    gid = grp.getgrnam(self.config["permission"]["group"]).gr_gid
+                    os.chown(f, uid, gid)
+                    self.logDebug(u'Owner set for "%s"' % f)
             except Exception, e:
-                self.log.warning(_("Setting User and Group failed"), e)
+                self.log.warning(_("Setting User and Group failed"), e)     
 
     def logDebug_(self):
         for line in traceback.format_exc().split('\n'):
