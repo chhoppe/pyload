@@ -775,6 +775,8 @@ class PathLoader:
         Calling of this function should be left to self.loadFiles()
         which will be calling it in an event of necessity
         '''
+        if sub_dir_path == ".@__thumb": # QNAP Mediastation Thumbnails
+            return
         sub_dir_path = os.path.join(base_name, sub_dir_path)
         for dir_name in os.listdir(sub_dir_path):
             if (os.path.isdir(os.path.join(sub_dir_path,dir_name))):
@@ -792,9 +794,10 @@ class PathLoader:
         if os.path.exists(dir_path_to_search):
             for dname in os.listdir(dir_path_to_search):
                 if (os.path.isdir(os.path.join(dir_path_to_search, dname))):
-                    #paths = dict(zip(dname,dir_path_to_search))
-                    paths.append(dir_path_to_search)
-                    shows.append(dname)
+                    if (dname != ".@__thumb"):
+                        #paths = dict(zip(dname,dir_path_to_search))
+                        paths.append(dir_path_to_search)
+                        shows.append(dname)
                 paths_ = dict(zip(shows,paths))
 
         return paths_
