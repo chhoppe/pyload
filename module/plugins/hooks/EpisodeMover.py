@@ -127,6 +127,8 @@ class EpisodeMover(Hook):
         else:
             ldr = PathLoader()
             self.__tvdb = ldr.loadFolders(self.getConfig("tvshows"))
+            self._addToTVDb("/share/Multimedia/Serien/de")
+            self._addToTVDb("/share/Multimedia/Animes")
             if (self.__tvdb == {}): # only returns empty if target dir either on its own is empty or not existing
                 self.logWarning("No shows found. Please check correct path in plugin config. Aborting...")
                 self.__tvdb_queue_.put(False)
