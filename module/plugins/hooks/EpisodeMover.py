@@ -206,7 +206,11 @@ class EpisodeMover(Hook):
         This includes checking each file and finally discarding of or moving it to its final resting place.
         May it rest in peace.
         '''
-        
+        #check if script is enabled, needed since pyload keeps calling events that start the method 
+        #when the plugin was once activated in this session.
+        if not self.getConfig('activated'):
+            return
+             
         #populate local tv db if needed and halt main thread meanwhile
         self.start_populateTVDb()
         if not self.__tvdb_queue_.get():
