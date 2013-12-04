@@ -581,9 +581,11 @@ class EpisodeMover(Hook):
         ep_obj = self.__mv_queue.get() # get item from queue
         episode = ep_obj
         if episode.dst.find(self.getConfig('tvshows')) == -1:
-            self.logDebug("Episode %s does not have destination. Skipping..." % episode.src_filename)
-            self.__mv_queue.task_done()
-            return
+            if episode.dst.find("/share/Multimedia/Serien/de") == -1:
+                if episode.dst.find("/share/Multimedia/Animes") == -1:
+                    self.logDebug("Episode %s does not have destination. Skipping..." % episode.src_filename)
+                    self.__mv_queue.task_done()
+                    return
         self.__mv_lock.acquire(1)
         if os.path.exists(os.path.join(episode.src, episode.src_filename)) is False:
             self.logInfo(u'"%s" does not exist. Maybe was moved already? Aborting moving operation.' % os.path.join(episode.src, episode.src_filename))
