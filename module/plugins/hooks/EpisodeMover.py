@@ -358,28 +358,32 @@ class EpisodeMover(Hook):
         '''
         episode = episode_obj
         valdor = self.pattern_checker
+        longestmatch = ""
         #crntShows = {}  #add found tv episodes: {ep_file_name:(path_to_show, show_title, show_index)}  <- obsolete structure; adapt it!
         for e in self.__tvdb.keys(): # where e is an actual name of locally existing show
-            if valdor.hasPattern(episode.src_filename, valdor.createPattern(e)) is not None: # if True we got a local match
-                episode.dst = os.path.join(self.__tvdb.get(e), e) 
-                episode.show_name = e # e is the (folder) name of the (locally existing) show 
-                self.logDebug(u'"%s" recognised as show "%s"' % (episode.src_filename, e))
-                if self.getConfig("rename") is True:
-                    self.logInfo(u'Querying remote resource for episode name for "%s". Please exercise patience meanwhile...' % episode.src_filename)
-                    episode_names = self.__getEpisodeNamesFromRemoteDB(e)
-                    if episode_names != None: # if None no episode names were found remotely
-                        episode.episode_names = episode_names
-                        return True
-                    else:
-                        if self.getConfig("folder_search") is True: # Just for announcing that no episode names were found
-                            self.logInfo(u'No match in database for neither "%s" nor "%s". \
-                            Applying episode name will not be available.' % (episode.src_filename, episode.src))
-                        else: # Just for announcing that no episode names were found
-                            self.logInfo(u'No match in database for "%s". \
-                            Applying episode name will not be available.' % (episode.src_filename))
-                        return True # return True since the show itself was successfully matched
-                else:
+            if valdor.hasPattern(episode.src_filename, valdor.createPattern(e)) is not None: # if True we got one local match
+                if len(e) > len(longestmatch): # test if better (longer) match was found
+                    longestmatch = e
+        if len(longestmatch) >= 1: # if True we got a local match
+            episode.dst = os.path.join(self.__tvdb.get(longestmatch), longestmatch) 
+            episode.show_name = longestmatch # longestmatch is the (folder) name of the (locally existing) show 
+            self.logDebug(u'"%s" recognised as show "%s"' % (episode.src_filename, longestmatch))
+            if self.getConfig("rename") is True:
+                self.logInfo(u'Querying remote resource for episode name for "%s". Please exercise patience meanwhile...' % episode.src_filename)
+                episode_names = self.__getEpisodeNamesFromRemoteDB(longestmatch)
+                if episode_names != None: # if None no episode names were found remotely
+                    episode.episode_names = episode_names
                     return True
+                else:
+                    if self.getConfig("folder_search") is True: # Just for announcing that no episode names were found
+                        self.logInfo(u'No match in database for neither "%s" nor "%s". \
+                        Applying episode name will not be available.' % (episode.src_filename, episode.src))
+                    else: # Just for announcing that no episode names were found
+                        self.logInfo(u'No match in database for "%s". \
+                        Applying episode name will not be available.' % (episode.src_filename))
+                    return True # return True since the show itself was successfully matched
+            else:
+                return True
         if(createShow):
             return self.__createShow(episode)
     
