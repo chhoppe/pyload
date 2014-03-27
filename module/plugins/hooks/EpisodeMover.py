@@ -395,6 +395,8 @@ class EpisodeMover(Hook):
             episode.show_name = longestmatch # longestmatch is the (folder) name of the (locally existing) show 
             self.logDebug(u'"%s" recognised as show "%s"' % (episode.src_filename, longestmatch))
             if self.getConfig("rename") is True:
+                self.logInfo(u'Querying remote resource for episode name for "%s". Please exercise patience meanwhile...' % episode.src_filename)
+                episode_names = self.__getEpisodeNamesFromRemoteDB(longestmatch)
                 if episode_names != None: # if None no episode names were found remotely
                     episode.episode_names = episode_names   
                     return True
