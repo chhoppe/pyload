@@ -30,7 +30,7 @@ import inspect
 import pwd
 import grp
 #remote debugging
-# from module.common.pydevsrc import pydevd 
+#from module.common.pydevsrc import pydevd 
 
 
 class EpisodeMover(Hook):
@@ -54,7 +54,7 @@ class EpisodeMover(Hook):
 #    Notes: 
 #    -use "self.manager.dispatchEvent("name_of_the_event", arg1, arg2, ..., argN)" to define your own events! ;)
     __name__ = "EpisodeMover"
-    __version__ = "0.529"
+    __version__ = "0.531"
     __description__ = "EpisodeMover(EM) moves episodes to their final destination after downloading or extraction"
     __config__ = [  ("activated" , "bool" , "Activated"  , "False" ), 
                     ("tvshows", "folder", "This is the path to the locally existing tv shows", ""),
@@ -78,7 +78,9 @@ class EpisodeMover(Hook):
                     ("char_sub", "str", "Characters to substitute w/o any sanity checks (Syntax: a|b,c|b,d|,)", ""),
                     ("folder_sub", "bool", "Substitute characters in folders as well?", "False"),
                     ("junk_rm", "bool", "Automatic deletion of empty directories and files with certain (user-specified) extensions", "False"),
-                    ("junk_exts", "list", "Files with these extensions will be automatically deleted if automatic deletion is enabled", "txt,nfo,sfv,sub,idx,bmp,jpg,png"),]
+                    ("junk_exts", "list", "Files with these extensions will be automatically deleted if automatic deletion is enabled", "txt,nfo,sfv,sub,idx,bmp,jpg,png"),
+                    ("blacklist", "path", "/path/to/blacklist.txt (or relative to pyload config folder)", ""),
+                    ("bl_switch", "bool", "Blacklisting", "False"),]
     __author_name__ = ("rusk")
     __author_mail__ = ("troggs@gmx.net")
     __tvdb = {}
@@ -148,8 +150,9 @@ class EpisodeMover(Hook):
 
     
     def coreReady(self):
-        ConfigDumper(self).dump()
-        #ConfigDumper(self).load('/home/pyload/workspace/pyload/tests/test_suite/em_debug_config.cfg')
+        #ConfigDumper(self).dump()
+        #pydevd.settrace("192.168.1.46",stdoutToServer=True,stderrToServer=True)
+        #ConfigDumper(self).load('/root/.pyload/Logs/em_debug.conf')
         self.mv_logger = \
         MoveLogger(self.getConfig('move_log') +\
                    'moving_log.txt')
@@ -238,6 +241,15 @@ class EpisodeMover(Hook):
             else:
                 self.logInfo(u'"%s" is not for me to handle. Aborting...' % path_to_file_s)
             return
+        
+        
+        # check if any of the collected files are blacklisted
+        if self.getConfig("bl_switch") is True:
+            for file_ in files_.keys():
+                if self.__isBlacklisted(files_[file_]) is True:
+                    files_.pop(file_)
+                    self.logDebug(u'The path of the file "%s" is blacklisted and it will not be proccessed.' % file_)
+        
 
         #Check for sample files is enabled
         if self.getConfig("ignore_sample") is True:
@@ -346,9 +358,13 @@ class EpisodeMover(Hook):
             self.logDebug(u'File "%s" is a tv episode' % video_name)
             return True
         else:
-            self.logDebug(u'File "%s" is not a tv episode' % video_name)
-            self.mv_logger.log_custom(u'File %s is not a tv episode' % video_name)
-            return False
+            if self.getConfig("folder_search") and (valdor.isTVEpisode(src_path)):
+                self.logDebug(u'Folder "%s" is a tv episode' % src_path)
+                return True
+            else:
+                self.logDebug(u'File "%s" in Folder "%s" is not a tv episode' % (video_name,src_path))
+                self.mv_logger.log_custom(u'File "%s" in Folder "%s" is not a tv episode' % (video_name,src_path))
+                return False
     
         
     def isinDb(self, episode_obj, createShow=False):    
@@ -360,19 +376,27 @@ class EpisodeMover(Hook):
         valdor = self.pattern_checker
         longestmatch = ""
         #crntShows = {}  #add found tv episodes: {ep_file_name:(path_to_show, show_title, show_index)}  <- obsolete structure; adapt it!
+        filename=self.renamer.substitute_chars(episode.src_filename, self.getConfig("char_sub"))
+        if self.getConfig("folder_sub"):
+            foldername=self.renamer.substitute_chars(episode.root_folder, self.getConfig("char_sub"))
+        else:
+            foldername=episode.root_folder
+        if self.getConfig("folder_search"):
+            self.logInfo(u'Searching local Database for "%s". On matching Failure Searching for "%s".' %(filename,foldername))
+        else:
+            self.logInfo(u'Searching local Database for "%s".' %filename)
         for e in self.__tvdb.keys(): # where e is an actual name of locally existing show
-            if valdor.hasPattern(episode.src_filename, valdor.createPattern(e)) is not None: # if True we got one local match
+            if (valdor.hasPattern(filename, valdor.createPattern(e)) is not None) or \
+            (self.getConfig("folder_search") and valdor.hasPattern(foldername, valdor.createPattern(e)) is not None): # if True we got a local match
                 if len(e) > len(longestmatch): # test if better (longer) match was found
-                    longestmatch = e
+                    longestmatch = e      
         if len(longestmatch) >= 1: # if True we got a local match
             episode.dst = os.path.join(self.__tvdb.get(longestmatch), longestmatch) 
             episode.show_name = longestmatch # longestmatch is the (folder) name of the (locally existing) show 
             self.logDebug(u'"%s" recognised as show "%s"' % (episode.src_filename, longestmatch))
             if self.getConfig("rename") is True:
-                self.logInfo(u'Querying remote resource for episode name for "%s". Please exercise patience meanwhile...' % episode.src_filename)
-                episode_names = self.__getEpisodeNamesFromRemoteDB(longestmatch)
                 if episode_names != None: # if None no episode names were found remotely
-                    episode.episode_names = episode_names
+                    episode.episode_names = episode_names   
                     return True
                 else:
                     if self.getConfig("folder_search") is True: # Just for announcing that no episode names were found
@@ -495,24 +519,29 @@ class EpisodeMover(Hook):
         #crntShows = {}  #add found tv episodes: {ep_file_name:(path_to_show, show_title, show_index)}  <- obsolete structure; adapt it!
         episode = episode_obj
         valdor = self.pattern_checker
-        season = valdor.getSeason(episode.src_filename,
+        episode_name_for_show_index=episode.src_filename
+        if self.getConfig("folder_search") and \
+        valdor.hasPattern(episode.src_filename, valdor.createPattern(episode.show_name)) is None and \
+        valdor.hasPattern(episode.root_folder, valdor.createPattern(episode.show_name)) is not None:
+            episode_name_for_show_index=episode.root_folder
+        season = valdor.getSeason(episode_name_for_show_index,
                                   self.getConfig("season_text"),
                                   self.getConfig("leading_zero")) # returns "Season 1" e.g.
         if season == None:
-            self.logDebug(u'No valid show index could be extracted from "%s". Skipping...' % episode.src_filename)
+            self.logDebug(u'No valid show index could be extracted from "%s". Skipping...' % episode_name_for_show_index)
             return False
         season_path = os.path.join(episode.dst, season)
-        show_index = valdor.getShowIndex(episode.src_filename)
+        show_index = valdor.getShowIndex(episode_name_for_show_index)
         episode.show_index["raw"] = show_index
         # TODO: no clue what I am doing here; looks like legacy -> overhaul!
         episode.show_index["season"], episode.show_index["episode"] = \
         self.renamer.convert_show_index(show_index, 1, returnRaw=True)
         if (os.path.exists(season_path)):
             episode.dst = season_path
-            self.logDebug(u'Season directory for show "%s" already exists. No creation necessary.' % episode.src_filename)
+            self.logDebug(u'Season directory for show "%s" already exists. No creation necessary.' % episode_name_for_show_index)
             return True
         elif arbitrarySeason is True:
-            arbSeason = self.getArbSeasonPath(episode.dst, episode.src_filename)
+            arbSeason = self.getArbSeasonPath(episode.dst, episode_name_for_show_index)
             if arbSeason is not None:
                 season_path = os.path.join(episode.dst, arbSeason)
                 episode.dst = season_path
@@ -521,7 +550,7 @@ class EpisodeMover(Hook):
         if createSeason is True and os.path.exists(season_path) is not True:
             os.mkdir(season_path)
             episode.dst = season_path
-            self.logInfo(u'Season directory for show "%s" does not exist. Directory "%s" is being created' % (episode.src_filename,season))
+            self.logInfo(u'Season directory for show "%s" does not exist. Directory "%s" is being created' % (episode_name_for_show_index,season))
             self.setPermissions(season_path)
             return True
         elif createSeason is False and os.path.exists(season_path) is False:
@@ -566,6 +595,42 @@ class EpisodeMover(Hook):
                            re.IGNORECASE
                           )
         return True if match_ else False
+    
+    def __isBlacklisted(self, path_to_file):
+        """checks if a file should not be processed based on part of its path"""
+        
+        blacklist_file_name = "blacklist.txt"
+        path_to_blacklist = self.getConfig("blacklist")
+        blacklist_file = os.path.join(path_to_blacklist, blacklist_file_name)
+        if not os.path.exists(blacklist_file):
+            return False
+        
+        blacklist = []
+        for line in open(blacklist_file):
+            blacklist.append(line.replace("\n", ""))
+        
+        extract_path = self.config.plugin["ExtractArchive"]["destination"]["value"]
+        dl_path = self.config["general"]["download_folder"]
+        if path_to_file.find(extract_path) != -1: 
+            new_path = path_to_file[len(extract_path):] 
+            testees = new_path.split(os.sep)
+            while testees.count("") != 0:
+                testees.remove("")    
+            for entry in blacklist:
+                for testee in testees:
+                    if entry.lower() == testee.lower():
+                        return True # file is blacklisted
+        
+            
+        elif path_to_file.find(dl_path) != -1:
+            new_path = path_to_file[len(dl_path):]
+            testees = new_path.split(os.sep)
+            while testees.count("") != 0:
+                testees.remove("")    
+            for entry in blacklist:
+                for testee in testees:
+                    if entry.lower() == testee.lower():
+                        return True # file is blacklisted
     
     
     def add_queueMoving(self,episode_obj):
@@ -676,17 +741,14 @@ class EpisodeMover(Hook):
                         os.remove(file_)
                         filelist.append(f)
             elif os.path.isdir(file_):
-                if self.__isEmptyDir(file_):
-                    if os.path.exists(file_):
-                        os.rmdir(file_)
-                        filelist.append((u'%s(dir)' % f))
+                self.cleanFolder(file_)
         if len(filelist) > 0:
             self.logDebug(u'Deleted Junkfiles: %s' % filelist)
             self.logInfo(u'%s Junk File(s) deleted' % len(filelist)) 
         if self.__isEmptyDir(folder):
             if os.path.exists(folder) and not self.config["general"]["download_folder"] == folder:
                 os.rmdir(folder)
-                self.logInfo(u'Dir %s deleted' % folder)             
+                self.logInfo(u'Dir %s deleted' % folder)
 
 class Episode:
     
@@ -920,7 +982,7 @@ class PatternCompiler:
         re.compile(pattern1 + '|' + pattern2 + '|' + pattern3, re.IGNORECASE|re.DOTALL)
     
     def compile_getSeason(self):
-        p1 = '((\\s+)|(-+)|(_+)|(\\.+))(s\d{2}e\d{2})((\\s+)|(-+)|(_+)|(\\.+))' # S01E01 e.g.
+        p1 = '((\\s+)|(-+)|(_+)|(\\.+))(s\d{2}e\d{2})((\\s+)|(-+)|(_+)|(\\.+)|$)' # S01E01 e.g.
         p10 = '(\w{1})(s\d{2}e\d{2})((\\s+)|(-+)|(_+)|(\\.+))' # ShwnmS01E01 e.g.
         p2 = '((\\s+)|(-+)|(_+)|(\\.+))(\d{1,2}x\d{1,2})((\\s+)|(-+)|(_+)|(\\.+))' # 1x1, 10x10, 1x10, 10x1 e.g.
         p3 = '((\\s+)|(-+)|(_+)|(\\.+))([1-9][0-5][0-9])((\\s+)|(-+)|(_+)|(\\.+))' # 100 - 959
@@ -936,7 +998,7 @@ class PatternCompiler:
 
     
     def compile_getShowIndex(self):
-        p1 = '((\\s+)|(-+)|(_+)|(\\.+))(s\d{2}e\d{2})((\\s+)|(-+)|(_+)|(\\.+))' # S01E01 e.g.
+        p1 = '((\\s+)|(-+)|(_+)|(\\.+))(s\d{2}e\d{2})((\\s+)|(-+)|(_+)|(\\.+)|$)' # S01E01 e.g.
         p10 = '(\w{1})(s\d{2}e\d{2})((\\s+)|(-+)|(_+)|(\\.+))' # ShwnmS01E01 e.g.
         p2 = '((\\s+)|(-+)|(_+)|(\\.+))(\d{1,2}x\d{1,2})((\\s+)|(-+)|(_+)|(\\.+))' # 1x1, 10x10, 1x10, 10x1 e.g.
         p3 = '((\\s+)|(-+)|(_+)|(\\.+))([1-9][0-5][0-9]){1}((\\s+)|(-+)|(_+)|(\\.+))' # ".101-", "_901 " with ESS
@@ -2292,8 +2354,14 @@ class ConfigDumper:
     def load(self, src):
         self.config_dict = json.loads(open(src).readline())
         #def setPlugin(self, plugin, option, value):
+        exclude = [
+                   'outline',
+                   'desc',
+                   'tvshows',
+                   'occurrences'
+                  ]
         for option in self.config_dict.keys():
-            if option not in (u'outline', u'desc'):
+            if option not in exclude:
                 self.config_parser.setPlugin(self.hook_name, option, self.config_dict[option]['value'])
         
 
@@ -2323,7 +2391,6 @@ class MoveLogger:
         
     
     def log_custom(self, record):
-#         pydevd.settrace("192.168.1.46",stdoutToServer=True,stderrToServer=True)
         record = self.transcoder.encode(record)
         if self.path != '':
             l = open(self.path, 'a')
