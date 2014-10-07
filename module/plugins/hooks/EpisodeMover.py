@@ -189,8 +189,8 @@ class EpisodeMover(Hook):
         self.acq_rls_ProcessingLock(path_to_file) 
      
         
-    def unrarFinished(self,folder, fname, pyfile.url, pyfile.id, *extractedFiles):
-        self.acq_rls_ProcessingLock(path_to_extracted_files)
+    def unrarFinished(self, folder, fname, pyfile, extractedFiles):
+        self.acq_rls_ProcessingLock(folder)
    
     
     def acq_rls_ProcessingLock(self, path):
